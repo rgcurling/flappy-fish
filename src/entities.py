@@ -17,7 +17,7 @@ from config import (
     FISH_W, FISH_H, FISH_X, FISH_LERP,
     FISH_BODY, FISH_BELLY, FISH_FIN, FISH_EYE_W, FISH_EYE_P,
     GRAVITY, FLAP_FORCE, MAX_VY_DOWN, MAX_VY_UP,
-    OBS_WIDTH, OBS_GAP, OBSTACLE_FILL, OBSTACLE_EDGE, OBSTACLE_CAP,
+    OBS_WIDTH, OBSTACLE_FILL, OBSTACLE_EDGE, OBSTACLE_CAP,
     BUBBLE_COL,
 )
 
@@ -183,7 +183,7 @@ class ObstaclePair:
     (tracked via the `scored` flag to prevent awarding multiple times).
     """
 
-    def __init__(self, gap_center_y: int, speed: float) -> None:
+    def __init__(self, gap_center_y: int, speed: float, gap: int = 190) -> None:
         """
         Parameters
         ----------
@@ -191,11 +191,15 @@ class ObstaclePair:
             Y coordinate of the centre of the gap (px from top).
         speed : float
             Horizontal movement speed (px / frame).
+        gap : int
+            Vertical gap size between the two pillars (px).
+            Defaults to OBS_GAP from config but can be overridden per difficulty.
         """
         # Start just off the right edge of the screen
         self.x      = float(SCREEN_WIDTH + OBS_WIDTH // 2 + 10)
         self.gap_y  = gap_center_y
         self.speed  = speed
+        self.gap    = gap    # store so top_rect / bottom_rect use it
         self.scored = False  # set to True after awarding the point
 
     # ── Update ────────────────────────────────────────────────────────────────
@@ -212,7 +216,7 @@ class ObstaclePair:
     @property
     def top_rect(self) -> pygame.Rect:
         """Rect covering the top pillar (from screen top down to gap)."""
-        h = self.gap_y - OBS_GAP // 2
+        h = self.gap_y - self.gap // 2
         return pygame.Rect(
             int(self.x) - OBS_WIDTH // 2, 0,
             OBS_WIDTH, max(0, h),
@@ -221,7 +225,7 @@ class ObstaclePair:
     @property
     def bottom_rect(self) -> pygame.Rect:
         """Rect covering the bottom pillar (from gap down to screen bottom)."""
-        y = self.gap_y + OBS_GAP // 2
+        y = self.gap_y + self.gap // 2
         return pygame.Rect(
             int(self.x) - OBS_WIDTH // 2, y,
             OBS_WIDTH, max(0, SCREEN_HEIGHT - y),

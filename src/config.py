@@ -45,16 +45,44 @@ MAX_VY_UP     = -13.0   # maximum rise velocity
 
 # ── Obstacles ─────────────────────────────────────────────────────────────────
 OBS_WIDTH     = 68      # pillar width (px)
-OBS_GAP       = 195     # vertical gap between top & bottom pillar (px)
-OBS_SPEED     = 3.0     # starting speed (px / frame)
-OBS_INTERVAL  = 88      # frames between obstacle spawns
 # Random range for the gap centre Y position
 OBS_GAP_MIN_Y = 130
 OBS_GAP_MAX_Y = SCREEN_HEIGHT - 130
 
-# ── Difficulty scaling ────────────────────────────────────────────────────────
-SPEED_STEP    = 5       # speed increases every N points
-SPEED_MAX     = 7.5     # maximum pillar speed (px / frame)
+# ── Difficulty presets ────────────────────────────────────────────────────────
+# Each entry controls starting feel AND how fast the game ramps up.
+#   gap       – vertical space between pillars (px); smaller = harder
+#   speed     – starting pillar speed (px / frame)
+#   interval  – frames between pillar spawns; smaller = more frequent
+#   speed_step – score points between each speed increase
+#   speed_max  – absolute speed cap (px / frame)
+DIFFICULTIES = {
+    "Easy": {
+        "gap":        215,
+        "speed":      2.5,
+        "interval":   100,
+        "speed_step":  8,
+        "speed_max":   5.5,
+        "color":      ( 80, 200, 120),   # green label
+    },
+    "Medium": {
+        "gap":        190,
+        "speed":      3.0,
+        "interval":    88,
+        "speed_step":  5,
+        "speed_max":   7.5,
+        "color":      (255, 210,  60),   # yellow label
+    },
+    "Hard": {
+        "gap":        155,
+        "speed":      4.5,
+        "interval":    68,
+        "speed_step":  4,
+        "speed_max":  11.0,
+        "color":      (255,  80,  80),   # red label
+    },
+}
+DIFFICULTY_NAMES = list(DIFFICULTIES.keys())   # ["Easy", "Medium", "Hard"]
 
 # ── Hand tracking ─────────────────────────────────────────────────────────────
 # Camera index to use. On macOS with Continuity Camera (iPhone as webcam),
