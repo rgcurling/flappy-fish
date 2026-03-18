@@ -1,7 +1,7 @@
 """
 hand_tracker.py – Webcam capture and MediaPipe hand tracking.
 
-Opens the default webcam (index 0), detects one hand per frame using
+Opens the webcam specified by CAMERA_INDEX in config.py, detects one hand per frame using
 MediaPipe Hands, and exposes the index-fingertip's normalised Y
 coordinate via get_hand_y().
 
@@ -20,6 +20,8 @@ from typing import Optional
 
 import cv2
 import mediapipe as mp
+
+from config import CAMERA_INDEX
 
 
 class HandTracker:
@@ -72,12 +74,18 @@ class HandTracker:
             self._hands = None
 
     def _open_webcam(self) -> None:
-        """Try to open webcam index 0 with the appropriate backend."""
+        """Try to open the webcam at CAMERA_INDEX with the appropriate backend.
+
+        On macOS, Continuity Camera (iPhone) typically claims index 0, pushing
+        the built-in FaceTime camera to index 1.  Set CAMERA_INDEX in config.py
+        to match your setup.  Run  python src/list_cameras.py  to discover
+        which index corresponds to which physical camera.
+        """
         # On macOS, AVFoundation gives the most reliable results.
         # On other platforms we let OpenCV pick the best available backend.
         backend = cv2.CAP_AVFOUNDATION if sys.platform == "darwin" else cv2.CAP_ANY
         try:
-            cap = cv2.VideoCapture(0, backend)
+            cap = cv2.VideoCapture(CAMERA_INDEX, backend)
             if cap.isOpened():
                 # Smaller resolution = faster reads with no quality loss for tracking
                 cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
@@ -87,11 +95,11 @@ class HandTracker:
                 # Only mark as available if MediaPipe is also ready
                 self.available = self._hands is not None
                 if self.available:
-                    print("[HandTracker] Webcam opened – hand tracking active.")
+                    print(f"[HandTracker] Camera {CAMERA_INDEX} opened – hand tracking active.")
                 else:
-                    print("[HandTracker] Webcam open but MediaPipe unavailable.")
+                    print(f"[HandTracker] Camera {CAMERA_INDEX} open but MediaPipe unavailable.")
             else:
-                print("[HandTracker] Could not open webcam – using keyboard mode.")
+                print(f"[HandTracker] Could not open camera {CAMERA_INDEX} – using keyboard mode.")
                 cap.release()
         except Exception as exc:
             print(f"[HandTracker] Webcam error: {exc}")

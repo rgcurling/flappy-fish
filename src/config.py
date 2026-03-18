@@ -57,6 +57,10 @@ SPEED_STEP    = 5       # speed increases every N points
 SPEED_MAX     = 7.5     # maximum pillar speed (px / frame)
 
 # ── Hand tracking ─────────────────────────────────────────────────────────────
+# Camera index to use. On macOS with Continuity Camera (iPhone as webcam),
+# index 0 is usually the iPhone and index 1 is the built-in FaceTime camera.
+# Run: python src/list_cameras.py  to see which index is which.
+CAMERA_INDEX  = 1
 HAND_SMOOTH   = 0.18    # EMA alpha for index-fingertip Y (lower = smoother)
 
 # ── Decorative bubbles ────────────────────────────────────────────────────────
