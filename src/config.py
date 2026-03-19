@@ -20,9 +20,13 @@ FISH_FIN       = (200,  90,   0)   # darker fin / tail
 FISH_EYE_W     = (240, 240, 240)   # eye white
 FISH_EYE_P     = ( 20,  20,  20)   # pupil
 
-OBSTACLE_FILL  = ( 10,  70,  50)   # dark teal pillar body
-OBSTACLE_EDGE  = ( 20, 110,  80)   # lighter edge highlight
-OBSTACLE_CAP   = ( 15,  90,  60)   # cap facing the gap
+OBSTACLE_FILL  = ( 10,  70,  50)   # dark teal (unused but kept for compat)
+OBSTACLE_EDGE  = ( 20, 110,  80)   # lighter edge (unused but kept for compat)
+OBSTACLE_CAP   = ( 15,  90,  60)   # cap (unused but kept for compat)
+
+SEAWEED_DARK   = ( 10,  90,  40)   # dark green seaweed strand
+SEAWEED_MID    = ( 20, 140,  60)   # mid green
+SEAWEED_LIGHT  = ( 60, 190,  80)   # highlight / tip colour
 
 BUBBLE_COL     = (120, 200, 255)   # bubble tint
 
