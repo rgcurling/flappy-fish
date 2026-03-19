@@ -17,7 +17,8 @@ from config import (
     FISH_W, FISH_H, FISH_X, FISH_LERP,
     FISH_BODY, FISH_BELLY, FISH_FIN, FISH_EYE_W, FISH_EYE_P,
     GRAVITY, FLAP_FORCE, MAX_VY_DOWN, MAX_VY_UP,
-    OBS_WIDTH, OBSTACLE_FILL, OBSTACLE_EDGE, OBSTACLE_CAP,
+    OBS_WIDTH,
+    SEAWEED_DARK, SEAWEED_MID, SEAWEED_LIGHT,
     BUBBLE_COL,
 )
 
@@ -233,53 +234,53 @@ class ObstaclePair:
 
     # ── Draw ──────────────────────────────────────────────────────────────────
 
-    def draw(self, surface: pygame.Surface) -> None:
-        self._draw_column(surface, top=True)
-        self._draw_column(surface, top=False)
+    def draw(self, surface: pygame.Surface, t: float = 0.0) -> None:
+        self._draw_seaweed(surface, top=True, t=t)
+        self._draw_seaweed(surface, top=False, t=t)
 
-    def _draw_column(self, surface: pygame.Surface, top: bool) -> None:
+    def _draw_seaweed(self, surface: pygame.Surface, top: bool, t: float = 0.0) -> None:
         rect = self.top_rect if top else self.bottom_rect
         if rect.height <= 0:
             return
 
         ix = int(self.x)
+        num_strands = 5
+        strand_spacing = OBS_WIDTH // (num_strands + 1)
 
-        # ── Main pillar body ──────────────────────────────────────────────────
-        pygame.draw.rect(surface, OBSTACLE_FILL, rect)
+        for s in range(num_strands):
+            root_x = rect.left + strand_spacing * (s + 1)
+            phase = s * 1.1
 
-        # Edge highlights to give depth
-        pygame.draw.line(
-            surface, OBSTACLE_EDGE,
-            (rect.left + 4, rect.top), (rect.left + 4, rect.bottom), 4,
-        )
-        pygame.draw.line(
-            surface, OBSTACLE_EDGE,
-            (rect.right - 5, rect.top), (rect.right - 5, rect.bottom), 4,
-        )
+            num_pts = max(8, rect.height // 8)
+            pts = []
+            for i in range(num_pts + 1):
+                frac = i / num_pts  # 0 at root, 1 at tip
+                if top:
+                    py = rect.top + frac * rect.height
+                else:
+                    py = rect.bottom - frac * rect.height
 
-        # ── Cap (wider block at the end facing the gap) ───────────────────────
-        cap_h = 22
-        cap_w = OBS_WIDTH + 16
-        cap_x = ix - cap_w // 2
+                # Sinusoidal sway animated by time t; amplitude grows toward tip
+                sway = math.sin(frac * math.pi * 2.5 + phase + t * 1.8) * (8 + frac * 12)
+                px = root_x + sway
+                pts.append((int(px), int(py)))
 
-        if top:
-            cap_y = rect.bottom - cap_h
-        else:
-            cap_y = rect.top
+            if len(pts) < 2:
+                continue
 
-        cap_rect = pygame.Rect(cap_x, cap_y, cap_w, cap_h)
-        pygame.draw.rect(surface, OBSTACLE_CAP, cap_rect)
-        pygame.draw.rect(surface, OBSTACLE_EDGE, cap_rect, 2)
+            for i in range(len(pts) - 1):
+                frac = i / (len(pts) - 1)
+                if frac < 0.5:
+                    c = tuple(int(SEAWEED_DARK[j] + (SEAWEED_MID[j] - SEAWEED_DARK[j]) * (frac * 2)) for j in range(3))
+                else:
+                    c = tuple(int(SEAWEED_MID[j] + (SEAWEED_LIGHT[j] - SEAWEED_MID[j]) * ((frac - 0.5) * 2)) for j in range(3))
+                thickness = max(2, int(7 * (1 - i / len(pts))))
+                pygame.draw.line(surface, c, pts[i], pts[i + 1], thickness)
 
-        # ── Small coral spikes on the cap ─────────────────────────────────────
-        for i in range(3):
-            bx = cap_x + 12 + i * 24
-            if top:
-                pts = [(bx, cap_y), (bx + 8, cap_y), (bx + 4, cap_y - 10)]
-            else:
-                by = cap_y + cap_h
-                pts = [(bx, by), (bx + 8, by), (bx + 4, by + 10)]
-            pygame.draw.polygon(surface, OBSTACLE_EDGE, pts)
+            tip = pts[-1]
+            leaf_surf = pygame.Surface((14, 20), pygame.SRCALPHA)
+            pygame.draw.ellipse(leaf_surf, (*SEAWEED_LIGHT, 210), (0, 0, 14, 20))
+            surface.blit(leaf_surf, (tip[0] - 7, tip[1] - 10))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -294,8 +295,15 @@ class Bubble:
     atmosphere without requiring any image assets.
     """
 
-    def __init__(self) -> None:
-        self._reset(initial=True)
+    def __init__(self, pos=None) -> None:
+        self._reset(initial=pos is None)
+        if pos is not None:
+            self.x     = float(pos[0])
+            self.y     = float(pos[1])
+            self.r     = random.randint(2, 5)
+            self.speed = random.uniform(0.6, 1.5)
+            self.drift = random.uniform(-0.4, 0.1)
+            self.alpha = random.randint(100, 180)
 
     def _reset(self, initial: bool = False) -> None:
         self.x     = float(random.randint(0, SCREEN_WIDTH))
@@ -334,3 +342,99 @@ class Bubble:
         )
 
         surface.blit(buf, (int(self.x) - cx, int(self.y) - cy))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Pearl
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Pearl:
+    """
+    A golden collectible pearl that bobs in the gap between seaweed columns.
+    Collecting it awards bonus points.
+    """
+
+    RADIUS = 10
+
+    def __init__(self, x: float, y: float, speed: float) -> None:
+        self.x         = x
+        self.y         = y
+        self.speed     = speed
+        self.collected = False
+        self._phase    = random.uniform(0.0, math.pi * 2)
+
+    def update(self) -> None:
+        self.x -= self.speed
+
+    @property
+    def off_screen(self) -> bool:
+        return self.x < -20
+
+    @property
+    def rect(self) -> pygame.Rect:
+        r = self.RADIUS
+        return pygame.Rect(int(self.x) - r, int(self.y) - r, r * 2, r * 2)
+
+    def draw(self, surface: pygame.Surface, t: float = 0.0) -> None:
+        bob_y = int(self.y + math.sin(t * 2.5 + self._phase) * 6)
+        cx, cy = int(self.x), bob_y
+        r = self.RADIUS
+
+        # Soft glow
+        glow = pygame.Surface((r * 4, r * 4), pygame.SRCALPHA)
+        pygame.draw.circle(glow, (255, 215, 0, 55), (r * 2, r * 2), r * 2)
+        surface.blit(glow, (cx - r * 2, cy - r * 2))
+
+        # Pearl body
+        pygame.draw.circle(surface, (255, 215, 0), (cx, cy), r)
+        # Inner highlight
+        pygame.draw.circle(surface, (255, 245, 150), (cx - 3, cy - 3), 4)
+        # Rim
+        pygame.draw.circle(surface, (200, 140, 0), (cx, cy), r, 2)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Particle
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Particle:
+    """
+    A short-lived coloured particle used for the fish death explosion effect.
+    """
+
+    _COLOURS = [
+        (255, 140,   0),   # FISH_BODY orange
+        (255, 210,  90),   # FISH_BELLY yellow
+        (200,  90,   0),   # FISH_FIN dark orange
+        (255, 200,  50),   # bright gold
+    ]
+
+    def __init__(self, x: float, y: float) -> None:
+        self.x       = x
+        self.y       = y
+        angle        = random.uniform(0.0, math.pi * 2)
+        speed        = random.uniform(2.5, 9.0)
+        self.vx      = math.cos(angle) * speed
+        self.vy      = math.sin(angle) * speed
+        self.life    = random.randint(22, 50)
+        self.max_life = self.life
+        self.r       = random.randint(3, 8)
+        self.color   = random.choice(self._COLOURS)
+
+    def update(self) -> None:
+        self.x  += self.vx
+        self.y  += self.vy
+        self.vy += 0.35    # gravity
+        self.vx *= 0.96    # drag
+        self.life -= 1
+
+    @property
+    def alive(self) -> bool:
+        return self.life > 0
+
+    def draw(self, surface: pygame.Surface) -> None:
+        alpha = int(255 * self.life / self.max_life)
+        r     = max(1, int(self.r * self.life / self.max_life))
+        buf   = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(buf, (*self.color, alpha), (r + 1, r + 1), r)
+        surface.blit(buf, (int(self.x) - r - 1, int(self.y) - r - 1))

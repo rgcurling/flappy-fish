@@ -30,7 +30,7 @@ from config import (
     NUM_BUBBLES,
     DIFFICULTIES, DIFFICULTY_NAMES,
 )
-from entities import Bubble, Fish, ObstaclePair
+from entities import Bubble, Fish, ObstaclePair, Pearl, Particle
 from hand_tracker import HandTracker
 
 
@@ -107,6 +107,9 @@ class Game:
 
         self.fish      = Fish()
         self.obstacles: List[ObstaclePair] = []
+        self.pearls:    List[Pearl]        = []
+        self.trail_bubbles: List[Bubble]   = []
+        self.particles: List[Particle]     = []
 
         # Countdown state
         self._cd_count: int = 3
@@ -114,6 +117,12 @@ class Game:
 
         # One-shot flap flag
         self._flap: bool = False
+
+        # Visual feedback timers
+        self._speedup_flash:  int = 0   # frames remaining for speed-up flash
+        self._new_best_timer: int = 0   # frames remaining for "NEW BEST!" toast
+        self._prev_best: int = self.high_scores.get(self._diff_name, 0)
+        self._trail_timer: int = 0
 
     # ── Main loop ─────────────────────────────────────────────────────────────
 
@@ -208,6 +217,14 @@ class Game:
         for b in self.bubbles:
             b.update()
 
+        for tb in self.trail_bubbles:
+            tb.update()
+        self.trail_bubbles = [tb for tb in self.trail_bubbles if tb.y > -20]
+
+        for p in self.particles:
+            p.update()
+        self.particles = [p for p in self.particles if p.alive]
+
         if self.state == State.COUNTDOWN:
             self._update_countdown()
         elif self.state == State.PLAYING:
@@ -231,12 +248,27 @@ class Game:
         else:
             self.fish.update_hand(self.tracker.get_hand_y())
 
+        # ── Fish bubble trail ─────────────────────────────────────────────────
+        self._trail_timer += 1
+        if self._trail_timer >= 12:
+            self._trail_timer = 0
+            tail_x = int(self.fish.x) - 30
+            tail_y = int(self.fish.y)
+            self.trail_bubbles.append(Bubble(pos=(tail_x, tail_y)))
+
         # ── Spawn obstacles ───────────────────────────────────────────────────
         self.obs_timer += 1
         if self.obs_timer >= self._obs_interval:
             self.obs_timer = 0
             gap_y = random.randint(OBS_GAP_MIN_Y, OBS_GAP_MAX_Y)
             self.obstacles.append(ObstaclePair(gap_y, self.speed, self._obs_gap))
+            # Spawn a pearl in the center of the gap, ~30 px offset from center
+            pearl_y = gap_y + random.randint(-25, 25)
+            self.pearls.append(Pearl(
+                x=float(SCREEN_WIDTH + OBS_WIDTH // 2 + 10),
+                y=float(pearl_y),
+                speed=self.speed,
+            ))
 
         # ── Move + score obstacles ────────────────────────────────────────────
         for obs in self.obstacles:
@@ -248,8 +280,26 @@ class Game:
 
         self.obstacles = [o for o in self.obstacles if not o.off_screen]
 
-        # ── Collision ─────────────────────────────────────────────────────────
+        # ── Update and collect pearls ─────────────────────────────────────────
         fish_rect = self.fish.rect
+        for pearl in self.pearls:
+            pearl.update()
+            if not pearl.collected and fish_rect.colliderect(pearl.rect):
+                pearl.collected = True
+                self.score += 3
+                self._on_score_increase()
+                # Burst of sparkle particles at pearl location
+                for _ in range(10):
+                    self.particles.append(Particle(pearl.x, pearl.y))
+        self.pearls = [p for p in self.pearls if not p.off_screen and not p.collected]
+
+        # ── Countdown visual timers ───────────────────────────────────────────
+        if self._speedup_flash > 0:
+            self._speedup_flash -= 1
+        if self._new_best_timer > 0:
+            self._new_best_timer -= 1
+
+        # ── Collision ─────────────────────────────────────────────────────────
         for obs in self.obstacles:
             if (fish_rect.colliderect(obs.top_rect)
                     or fish_rect.colliderect(obs.bottom_rect)):
@@ -264,6 +314,14 @@ class Game:
             self.speed = min(self._speed_max, self.speed + 0.5)
             for obs in self.obstacles:
                 obs.speed = self.speed
+            for pearl in self.pearls:
+                pearl.speed = self.speed
+            self._speedup_flash = 25
+
+        # Detect first moment we beat the previous best this round
+        if self.score > self._prev_best and self._new_best_timer == 0:
+            self._new_best_timer = 180   # show for 3 s
+
         self.high_scores[self._diff_name] = max(
             self.high_scores[self._diff_name], self.score
         )
@@ -272,6 +330,9 @@ class Game:
         self.high_scores[self._diff_name] = max(
             self.high_scores[self._diff_name], self.score
         )
+        # Burst of particles from the fish
+        for _ in range(28):
+            self.particles.append(Particle(self.fish.x, self.fish.y))
         self.state = State.GAME_OVER
 
     # ── Render ────────────────────────────────────────────────────────────────
@@ -296,9 +357,16 @@ class Game:
     # ── Per-state renderers ───────────────────────────────────────────────────
 
     def _render_scene(self) -> None:
+        t = pygame.time.get_ticks() / 1000.0
         for obs in self.obstacles:
-            obs.draw(self.screen)
+            obs.draw(self.screen, t)
+        for pearl in self.pearls:
+            pearl.draw(self.screen, t)
+        for tb in self.trail_bubbles:
+            tb.draw(self.screen)
         self.fish.draw(self.screen)
+        for p in self.particles:
+            p.draw(self.screen)
 
     def _render_start(self) -> None:
         t = pygame.time.get_ticks() / 1000.0
@@ -397,6 +465,10 @@ class Game:
     def _render_playing(self) -> None:
         self._render_scene()
         self._render_hud()
+        if self._speedup_flash > 0:
+            self._render_speedup_flash()
+        if self._new_best_timer > 0:
+            self._render_new_best_toast()
 
     def _render_paused(self) -> None:
         self._render_scene()
@@ -428,6 +500,29 @@ class Game:
                    SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 85, TEXT_WHITE)
         self._text("UP  →  replay same difficulty", self.font_sm,
                    SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 108, (160, 160, 160))
+
+    def _render_speedup_flash(self) -> None:
+        """Brief cyan edge-glow when the game speeds up."""
+        alpha = int(180 * self._speedup_flash / 25)
+        flash = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        border = 18
+        pygame.draw.rect(flash, (0, 220, 255, alpha), (0, 0, SCREEN_WIDTH, border))
+        pygame.draw.rect(flash, (0, 220, 255, alpha), (0, SCREEN_HEIGHT - border, SCREEN_WIDTH, border))
+        pygame.draw.rect(flash, (0, 220, 255, alpha), (0, 0, border, SCREEN_HEIGHT))
+        pygame.draw.rect(flash, (0, 220, 255, alpha), (SCREEN_WIDTH - border, 0, border, SCREEN_HEIGHT))
+        self.screen.blit(flash, (0, 0))
+
+    def _render_new_best_toast(self) -> None:
+        """Animated 'NEW BEST!' banner that pulses and fades out."""
+        frac  = self._new_best_timer / 180.0          # 1.0 → 0.0
+        alpha = int(min(255, frac * 510))              # fade in then out
+        scale = 1.0 + 0.12 * abs(math.sin(frac * math.pi * 6))
+        base  = self.font_md.render("★  NEW BEST!  ★", True, (255, 230, 50))
+        w = max(1, int(base.get_width()  * scale))
+        h = max(1, int(base.get_height() * scale))
+        scaled = pygame.transform.smoothscale(base, (w, h))
+        scaled.set_alpha(alpha)
+        self.screen.blit(scaled, scaled.get_rect(center=(SCREEN_WIDTH // 2, 82)))
 
     def _render_hud(self) -> None:
         """Score, difficulty badge, and control-mode indicator."""
